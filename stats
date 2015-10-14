@@ -1,6 +1,6 @@
-#!/bin/sh -e
+#!/bin/sh
 tempPID=$$
-trap 'rm -f tmpFile\* exit 1' INT HUP TERM
+trap 'rm -f tmpFile* exit 1' INT HUP TERM
 firstChar=${1:0:1}
 secondChar=${1:1:1}
 average=0
@@ -8,6 +8,8 @@ median=0
 tmpArray=()
 smallestNum=0
 sum=0
+args=$#
+method=0
 if [ "$#" -lt 1 ]
 then
 	echo "Usage: stats {-rows|-cols} [file]" >&2
@@ -15,25 +17,32 @@ then
 fi
 
 
-if [ "$#" -eq 1 ]
+if [ "$args" -eq 1 ]
 then
-	echo "Using cat method/1 argument provided, assigning argument 2"	
+	inputFile="/dev/stdin"
+	method=1
+elif [ "$args" -eq 2 ]
+then
+	inputFile=$2
+fi	
+
+echo "$inputFile"
+
+
+if [ ! -e "$inputFile" ]
+then
+	echo -e "stats: cannot read \"$inputFile\"" >&2
+	echo "hi"
+	exit 1
 fi
-if [ "$#" -eq 2 ]
+if [ ! -r "$inputFile" ]
 then
-	if [ -e "$2" ]
-	then
-		if [ -r "$2" ]
-		then
-			inputFile=$2
-		else
-    			echo -e "stats: cannot read \"$2\"" >&2
-			exit 1
-		fi
-	else
-		echo -e "stats: cannot read \"$2\"" >&2
-		exit 1
-	fi
+	echo -e "stats: cannot read \"$inputFile\"" >&2
+	echo "hello"
+	exit 1
+fi
+
+
 	if [ "$firstChar" == "-" ]
 	then
 		if [ "$secondChar" == "r" ]
@@ -133,11 +142,13 @@ then
 					divisor=0
 					roundcheck=0
 					remainder=0
+					
 					while read line
 					do
 						sum=`expr $sum + $line`
 						count=`expr $count + 1`
 					done<$filename
+					
 					cat tmpFile$i | sort -n >> tmpFileSorted$i
 					divisor="$count"
 					average=`expr $sum / $divisor`
@@ -207,7 +218,3 @@ then
 		echo "Usage: stats {-rows|-cols} [file]" >&2
 		exit 1
 	fi
-else
-	echo "Usage: stats {-rows|-cols} [file]" >&2
-	exit 1
-fi
