@@ -1,0 +1,27 @@
+#!/bin/sh
+firstChar=${1:0:1}
+secondChar=${1:1:1}
+
+if [ "$#" -eq 1 ]; then
+echo "hi"	
+elif [ "$#" -eq 2 ]; then
+	if [ "$firstChar" == "-" ]; then
+		if [ "$secondChar" == "r" ]; then
+			echo "We're doing rows!!"
+			while read myLine
+			do
+				awk 'END {print $myLine}';
+			done <$2	
+		elif [ "$secondChar" == "c" ]; then
+			echo "We're doing columns!!"
+		else
+			echo "2ndChar Invalid Argument"
+		fi
+	else
+		echo "Custom Invalid argument"
+	fi
+else
+	echo "Invalid number of arguments"
+fi
+
+
