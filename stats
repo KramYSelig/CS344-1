@@ -1,6 +1,6 @@
 #!/bin/sh
-tempPID=$$
-trap 'rm -f tmpFile* exit 1' INT HUP TERM
+pid=$$
+trap "rm -rf ${pid}* exit 1" INT HUP TERM
 firstChar=${1:0:1}
 secondChar=${1:1:1}
 average=0
@@ -10,211 +10,178 @@ smallestNum=0
 sum=0
 args=$#
 method=0
-if [ "$#" -lt 1 ]
-then
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ] ; then
 	echo "Usage: stats {-rows|-cols} [file]" >&2
 	exit 1
 fi
 
 
-if [ "$args" -eq 1 ]
-then
+if [ "$args" -eq 1 ] ; then
 	inputFile="/dev/stdin"
 	method=1
-elif [ "$args" -eq 2 ]
-then
+elif [ "$args" -eq 2 ] ; then
 	inputFile=$2
 fi	
 
-echo "$inputFile"
-
-
-if [ ! -e "$inputFile" ]
-then
+if [ ! -e "$inputFile" ] || [ ! -r "$inputFile" ]; then
 	echo -e "stats: cannot read \"$inputFile\"" >&2
-	echo "hi"
-	exit 1
-fi
-if [ ! -r "$inputFile" ]
-then
-	echo -e "stats: cannot read \"$inputFile\"" >&2
-	echo "hello"
 	exit 1
 fi
 
-
-	if [ "$firstChar" == "-" ]
-	then
-		if [ "$secondChar" == "r" ]
-		then
-			echo -e 'Average\tMedian'
-
-			while read line
+if [ "$firstChar" == "-" ]; then
+	if [ "$secondChar" == "r" ]; then
+		echo -e 'Average\tMedian'
+		while read line
+		do
+			tmpArray=()
+			average=0
+			median=0
+			sum=0
+			sortedArray=()
+			divisor=0
+			roundcheck=0
+			remainder=0
+			
+			for myWord in $line
 			do
-				tmpArray=()
-				average=0
-				median=0
+				tmpArray+=("$myWord")
+				sum=`expr $sum + $myWord`
+			done
+			
+			divisor=`expr ${#tmpArray[@]}`
+			average=`expr $sum / $divisor`
+			divisor=`expr $divisor \* 100`
+			sum=`expr $sum \* 100`
+			remainder=$(($sum % $divisor))
+			
+			if (("$remainder" != 0)); then
+				if ((($divisor / $remainder) == 1)); then
+					average=`expr $average + 1`
+				elif ((($divisor % $remainder) == 0)); then
+					if ((($divisor / $remainder) == 2)); then
+						average=`expr $average + 1`
+					fi
+				fi
+			fi
+			# sorting concept from user 'l0b0' on StackOverFlow
+			# http://stackoverflow.com/questions/9516408/sorting-in-shell-script
+			sortedArray=( $(
+				for i in "${tmpArray[@]}"
+				do
+					echo "$i"
+				done | sort -n) )
+			divisor=`expr $divisor / 100`
+			if (( $divisor % 2 == 0 )); then
+				lowerIndex=`expr ${#sortedArray[@]} / 2 - 1`
+				upperIndex=`expr $lowerIndex + 1`
+				if (( ${sortedArray["$lowerIndex"]} < ${sortedArray["$upperIndex"]} )); then
+					median=${sortedArray["$upperIndex"]}
+				else
+					median=${sortedArray["$lowerIndex"]}
+				fi
+			else
+				if index=`expr ${#sortedArray[@]} / 2`; then
+					median=${sortedArray["$index"]}
+				else
+					median=${sortedArray[0]}
+				fi
+			fi
+			echo -e "$average\t$median"
+		done <$inputFile
+	elif [ "$secondChar" == "c" ]; then
+		col=0
+		numCols=0
+		sum=0
+		average=0
+		median=0
+		count=0
+		while read line
+		do
+			col=0
+			for myWord in $line
+			do
+				col=`expr $col + 1`
+				echo $myWord>>$pid"tmp"$col
+			done
+		done<$inputFile
+		if [ -e $pid"tmp1" ]; then
+			for i in $(seq 1 $col)
+			do
+				filename=$pid"tmp"$i
 				sum=0
-				sortedArray=()
+				count=0
+				average=0
 				divisor=0
 				roundcheck=0
 				remainder=0
 				
-				for myWord in $line
+				while read line
 				do
-					tmpArray+=("$myWord")
-					sum=`expr $sum + $myWord`
-				done
+					sum=`expr $sum + $line`
+					count=`expr $count + 1`
+				done<$filename
 				
-				divisor=`expr ${#tmpArray[@]}`
+				cat $pid"tmp"$i | sort -n >> $pid"tmpSort"$i
+				rm $pid"tmp"$i
+				divisor="$count"
 				average=`expr $sum / $divisor`
 				divisor=`expr $divisor \* 100`
 				sum=`expr $sum \* 100`
 				remainder=$(($sum % $divisor))
-				
-				if (("$remainder" != 0))
-				then
-					if ((($divisor / $remainder) == 1))
-					then
+			
+				if (("$remainder" != 0)); then
+					if ((($divisor / $remainder) == 1)); then
 						average=`expr $average + 1`
-					elif ((($divisor % $remainder) == 0))
-					then
-						if ((($divisor / $remainder) == 2))
-						then
+					elif ((($divisor % $remainder) == 0)); then
+						if ((($divisor / $remainder) == 2)); then
 							average=`expr $average + 1`
 						fi
 					fi
 				fi
-				# sorting concept from user 'l0b0' on StackOverFlow
-				# http://stackoverflow.com/questions/9516408/sorting-in-shell-script
-				sortedArray=( $(
-					for i in "${tmpArray[@]}"
-					do
-						echo "$i"
-					done | sort -n) )
+				echo -en "$average\t">>$pid"tmpAverage"
+				sortedArray=()
+			
+				while read line
+				do
+					sortedArray+=("$line")
+				done<$pid"tmpSort"$i
+				rm -f $pid"tmpSort"$i
 				divisor=`expr $divisor / 100`
-				if (( $divisor % 2 == 0 ))
-				then
-					lowerIndex=`expr ${#sortedArray[@]} / 2 - 1`
+				if (( $divisor % 2 == 0)); then
+					lowerIndex=`expr $count / 2 - 1`
 					upperIndex=`expr $lowerIndex + 1`
-					if (( ${sortedArray["$lowerIndex"]} < ${sortedArray["$upperIndex"]} ))
-					then
+					if (( ${sortedArray["$lowerIndex"]} < ${sortedArray["$upperIndex"]} )); then
 						median=${sortedArray["$upperIndex"]}
 					else
 						median=${sortedArray["$lowerIndex"]}
 					fi
 				else
-					if index=`expr ${#sortedArray[@]} / 2`
-					then
-						median=${sortedArray["$index"]}
+					if index=`expr ${#sortedArray[@]} / 2`;	then
+						median=${sortedArray["index"]}
 					else
-						median=${sortedArray[0]}
+						median=${sortedArray["index"]}
 					fi
 				fi
-				echo -e "$average\t$median"
-			done <$inputFile
-			
-		elif [ "$secondChar" == "c" ]
-		then
-			col=0
-			numCols=0
-			sum=0
-			average=0
-			median=0
-			count=0
-			while read line
-			do
-				col=0
-				for myWord in $line
-				do
-					col=`expr $col + 1`
-					echo $myWord>>tmpFile$col
-				done
-			done<$inputFile	
-			if [ -e "tmpFile1" ]
-			then
-				for i in $(seq 1 $col);
-				do
-					filename="tmpFile$i"
-					sum=0
-					count=0
-					average=0
-					divisor=0
-					roundcheck=0
-					remainder=0
-					
-					while read line
-					do
-						sum=`expr $sum + $line`
-						count=`expr $count + 1`
-					done<$filename
-					
-					cat tmpFile$i | sort -n >> tmpFileSorted$i
-					divisor="$count"
-					average=`expr $sum / $divisor`
-					divisor=`expr $divisor \* 100`
-					sum=`expr $sum \* 100`
-					remainder=$(($sum % $divisor))
-				
-					if (("$remainder" != 0))
-					then
-						if ((($divisor / $remainder) == 1))
-						then
-							average=`expr $average + 1`
-						elif ((($divisor % $remainder) == 0))
-						then
-							if ((($divisor / $remainder) == 2))
-							then
-								average=`expr $average + 1`
-							fi
-						fi
-					fi
-					echo -en "$average\t">>tmpAverageResults
-					sortedArray=()
-				
-					while read line
-					do
-						sortedArray+=("$line")
-					done<tmpFileSorted$i
-					divisor=`expr $divisor / 100`
-					if (( $divisor % 2 == 0))
-					then
-						lowerIndex=`expr $count / 2 - 1`
-						upperIndex=`expr $lowerIndex + 1`
-						if (( ${sortedArray["$lowerIndex"]} < ${sortedArray["$upperIndex"]} ))
-						then
-							median=${sortedArray["$upperIndex"]}
-						else
-							median=${sortedArray["$lowerIndex"]}
-						fi
-					else
-						if index=`expr ${#sortedArray[@]} / 2`
-						then
-							median=${sortedArray["index"]}
-						else
-							median=${sortedArray["index"]}
-						fi
-					fi
-					echo -en "$median\t">>tmpMedianResults
-				done
+				echo -en "$median\t">>$pid"tmpMedian"
+			done
 
-
-				echo -e "\r">>tmpAverageResults
-				echo 'Averages:'
-				cat tmpAverageResults
-				echo 'Medians:'
-				cat tmpMedianResults
-				echo -e "\r"
-			else
-				echo -e 'Averages:\n'
-				echo -e 'Medians:\n'
-			fi
-			rm -rf tmp*
+			echo -e "\r">>$pid"tmpAverage"
+			echo 'Averages:'
+			cat $pid"tmpAverage"
+			echo 'Medians:'
+			cat $pid"tmpMedian"
+			echo -e "\r"
+			rm $pid"tmpAverage"
+			rm $pid"tmpMedian"
 		else
-			echo "Usage: stats {-rows|-cols} [file]" >&2
-			exit 1
+			echo -e 'Averages:\n'
+			echo -e 'Medians:\n'
 		fi
 	else
 		echo "Usage: stats {-rows|-cols} [file]" >&2
 		exit 1
 	fi
+else
+	echo "Usage: stats {-rows|-cols} [file]" >&2
+	exit 1
+fi
