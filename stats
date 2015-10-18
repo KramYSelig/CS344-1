@@ -1,62 +1,96 @@
 #!/bin/sh
+# Author: Mark Giles - Sorting concept from Stack Overflow
+#
+# Filename: stats
+#
+# Description: Take as an argument an input file of tab separated
+# values, and calculates the median and averages of those values.
+#
+# Usage: stats {-rows|-cols} [file]
+#
+
+# Capture the process id in a known variable
 pid=$$
-trap "rm -rf ${pid}* exit 1" INT HUP TERM
+# Watch for SIGINT, SIGHUP, and SIGTERM, remove temp files created
+# by this process id if the signals are received
+trap "rm -rf ${pid}*; exit 1" INT HUP TERM
+
+# Store the first and second character of the first argument as well
+# the number of arguments. These will be used to determine the vaildity
+# of argument(s) provided
 firstChar=${1:0:1}
 secondChar=${1:1:1}
-average=0
-median=0
-tmpArray=()
-smallestNum=0
-sum=0
 args=$#
-method=0
+
+# Only move forward if there are exactly 1 or exactly 2 arguments provided
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ] ; then
 	echo "Usage: stats {-rows|-cols} [file]" >&2
 	exit 1
 fi
 
-
+# Determine the path of the input file. If standard input is used, stdin
+# is the path of the filename. Otherwise, the input file is the second
+# argument procided.
 if [ "$args" -eq 1 ] ; then
 	inputFile="/dev/stdin"
-	method=1
 elif [ "$args" -eq 2 ] ; then
 	inputFile=$2
 fi	
 
+# Stop the program if the input file does not exist or is not readable
 if [ ! -e "$inputFile" ] || [ ! -r "$inputFile" ]; then
-	echo -e "stats: cannot read \"$inputFile\"" >&2
+	echo -e "stats: cannot read $inputFile" >&2
 	exit 1
 fi
 
+# Check to see if the first argumrnt starts with a "-" character
 if [ "$firstChar" == "-" ]; then
+	# Check to see if the second character is an "r" or a "c"
+	# "r" indicates to calculates rows
+	# "c" indicates to calculate columns
 	if [ "$secondChar" == "r" ]; then
-		echo -e 'Average\tMedian'
+		# Print out the headers immediately
+		echo -e 'Average\tMedian' >&1
+		# Read each line of the input file
 		while read line
 		do
-			tmpArray=()
-			average=0
-			median=0
-			sum=0
-			sortedArray=()
-			divisor=0
-			roundcheck=0
-			remainder=0
+			tmpArray=()	# Separated words of the line
+			average=0	# Average numbers of the line values
+			median=0	# Median number of the line values
+			sum=0		# Sum of the line values
+			sortedArray=()	# Line values sorted numerically
+			divisor=0	# Divisor in average calculation
+			remainder=0	# Remainder of average calculation
 			
+			# Read each word of the line
 			for myWord in $line
 			do
+				# Store the word/number in the array
 				tmpArray+=("$myWord")
+				# Add the number to the overall sum
 				sum=`expr $sum + $myWord`
 			done
 			
+			# Total number of elements to be calculated
 			divisor=`expr ${#tmpArray[@]}`
+			# Average of numbers
 			average=`expr $sum / $divisor`
+			# Multiply divisor by 100 to calculate rounding
 			divisor=`expr $divisor \* 100`
+			# Multiply divisor by 100 to calculate rounding
 			sum=`expr $sum \* 100`
+			# Use mod to get remainder
 			remainder=$(($sum % $divisor))
-			
+			# Round up if the remainder only goes into the divisor once
+			# or exactly twice
 			if (("$remainder" != 0)); then
+				# If the remainder can only fit in the divisor once
 				if ((($divisor / $remainder) == 1)); then
 					average=`expr $average + 1`
+				# If the new remainder of dividing the divisor by the first remainder
+				# is equal to 0, check to see if the remaidner goes in exactly twice.
+				# This is the case when the original average calculation has a fractional
+				# value of exactly .5
 				elif ((($divisor % $remainder) == 0)); then
 					if ((($divisor / $remainder) == 2)); then
 						average=`expr $average + 1`
@@ -71,14 +105,19 @@ if [ "$firstChar" == "-" ]; then
 					echo "$i"
 				done | sort -n) )
 			divisor=`expr $divisor / 100`
+			
+			# Calculate the median. If the divisor is an even number, the median is the 
+			# higher of the two
 			if (( $divisor % 2 == 0 )); then
-				lowerIndex=`expr ${#sortedArray[@]} / 2 - 1`
-				upperIndex=`expr $lowerIndex + 1`
-				if (( ${sortedArray["$lowerIndex"]} < ${sortedArray["$upperIndex"]} )); then
-					median=${sortedArray["$upperIndex"]}
+				lIndex=`expr ${#sortedArray[@]} / 2 - 1`
+				uIndex=`expr $lIndex + 1`
+				if (( ${sortedArray["$lIndex"]} < ${sortedArray["$uIndex"]} )); then
+					median=${sortedArray["$uIndex"]}
 				else
-					median=${sortedArray["$lowerIndex"]}
+					median=${sortedArray["$lIndex"]}
 				fi
+			# If the divisor is an odd number, the median is the middle value. If there is
+			# only one value, the median is that value
 			else
 				if index=`expr ${#sortedArray[@]} / 2`; then
 					median=${sortedArray["$index"]}
@@ -86,102 +125,147 @@ if [ "$firstChar" == "-" ]; then
 					median=${sortedArray[0]}
 				fi
 			fi
-			echo -e "$average\t$median"
+			# Display the values calculate by this line
+			echo -e "$average\t$median" >&1
 		done <$inputFile
+	# If the second character of the first argument is a c, calculate the rows
 	elif [ "$secondChar" == "c" ]; then
-		col=0
-		numCols=0
-		sum=0
-		average=0
-		median=0
-		count=0
+		col=0		# Number of columns that will be calculated
+		sum=0		# Sum of values in column
+		average=0	# Average of values in column
+		median=0	# Median of values in column
+		count=0		# Number of values in column
+		
+		# Read each line of input file
 		while read line
 		do
+			# Reset number of columns
 			col=0
+			# Read each value in the line
 			for myWord in $line
 			do
+				# Add one to the column counter
 				col=`expr $col + 1`
+				# Store value in temporary file
 				echo $myWord>>$pid"tmp"$col
 			done
 		done<$inputFile
+
+		# Check to see that the first temp file exists
+		# If it doesn't, there were no values in the column (i.e. - empty file)
 		if [ -e $pid"tmp1" ]; then
+			# Iterate through each temp file
 			for i in $(seq 1 $col)
 			do
-				filename=$pid"tmp"$i
-				sum=0
-				count=0
-				average=0
-				divisor=0
+				filename=$pid"tmp"$i	# Current temp file numbered starting at 1
+				sum=0			# Sum of values in column
+				count=0			# Number of values in column
+				average=0		# Average of values in column
+				divisor=0		# Divisor for average calculation
 				roundcheck=0
-				remainder=0
+				remainder=0		# Remainder of average calculation
 				
+				# Read each line of temp file of column values
 				while read line
 				do
+					# Add current value to overall sum
 					sum=`expr $sum + $line`
+					# Add one to the total count of values for average calculation
 					count=`expr $count + 1`
 				done<$filename
 				
+				# Push sorted list of values into new temp file
 				cat $pid"tmp"$i | sort -n >> $pid"tmpSort"$i
+				# Remove unsorted temp file
 				rm $pid"tmp"$i
+				# Set divisor equal to number of values
 				divisor="$count"
+				# Initial average value of numbers in column
 				average=`expr $sum / $divisor`
+				# Divisor times 100 to calculate rounding
 				divisor=`expr $divisor \* 100`
+				# Sum times 100 to calculate rounding
 				sum=`expr $sum \* 100`
+				# New remainder to calculate rounding
 				remainder=$(($sum % $divisor))
-			
+				# If remainder is not equal to 0, need to calculate rounding
 				if (("$remainder" != 0)); then
+					# If rounding remainder goes into divisor only once, round up 1
+					# This means the rounding was greater than .5
 					if ((($divisor / $remainder) == 1)); then
 						average=`expr $average + 1`
+					# If rounding remainder goes into the divisor twice, roung up
+					# if it goes into it EXACTLY twice
 					elif ((($divisor % $remainder) == 0)); then
 						if ((($divisor / $remainder) == 2)); then
 							average=`expr $average + 1`
 						fi
 					fi
 				fi
+				# Store the average in a temp file that will keep track of the values
 				echo -en "$average\t">>$pid"tmpAverage"
+				# Sorted values of the column
 				sortedArray=()
-			
+				# Read through the sorted temp file
 				while read line
 				do
+					# Store value in array
 					sortedArray+=("$line")
 				done<$pid"tmpSort"$i
+				# Remove the sorted temp file
 				rm -f $pid"tmpSort"$i
 				divisor=`expr $divisor / 100`
+				# If divisor is even number, the median is the higher middle value
 				if (( $divisor % 2 == 0)); then
-					lowerIndex=`expr $count / 2 - 1`
-					upperIndex=`expr $lowerIndex + 1`
-					if (( ${sortedArray["$lowerIndex"]} < ${sortedArray["$upperIndex"]} )); then
+					lowerIndex=`expr $count / 2 - 1`	# Lower middle value
+					upperIndex=`expr $lowerIndex + 1`	# Upper middle value
+					# Median is higher middle value
+					if [[ ${sortedArray["$lowerIndex"]} -lt ${sortedArray["$upperIndex"]} ]]; then
 						median=${sortedArray["$upperIndex"]}
 					else
 						median=${sortedArray["$lowerIndex"]}
 					fi
+				# If divisor is odd number, the median is middle value
 				else
+					# Select middle value unless there is only one value
 					if index=`expr ${#sortedArray[@]} / 2`;	then
 						median=${sortedArray["index"]}
 					else
 						median=${sortedArray["index"]}
 					fi
 				fi
+				# Store median values in temporary file
 				echo -en "$median\t">>$pid"tmpMedian"
 			done
-
+			# Add carriage return to the average file
 			echo -e "\r">>$pid"tmpAverage"
-			echo 'Averages:'
-			cat $pid"tmpAverage"
-			echo 'Medians:'
-			cat $pid"tmpMedian"
-			echo -e "\r"
+			# Display "Averages" to screen
+			echo 'Averages:' >&1
+			# Display average values to the screen
+			cat $pid"tmpAverage" >&1
+			# Display "Medians" to the screen
+			echo 'Medians:' >&1
+			# Display median values to the screen
+			cat $pid"tmpMedian" >&1
+			# Display a carriage return to the screen
+			echo -e "\r" >&1
+			# Remove the average temp file
 			rm $pid"tmpAverage"
+			# Remove the median temp file
 			rm $pid"tmpMedian"
 		else
+			# Show "Averages:" with no values
 			echo -e 'Averages:\n'
+			# Show "Medians:" with no values
 			echo -e 'Medians:\n'
 		fi
 	else
+		# Display usage text if second character is not "r" or "c"
 		echo "Usage: stats {-rows|-cols} [file]" >&2
 		exit 1
 	fi
 else
+	# Display usage text if first character is not "-"
 	echo "Usage: stats {-rows|-cols} [file]" >&2
 	exit 1
 fi
